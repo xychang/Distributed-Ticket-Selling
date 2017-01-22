@@ -1,5 +1,5 @@
 {
-    "datacenters": {},
+    "datacenters": ["12345", "12346", "12347"],
     "messageDelay": 5,
-    "totalTickets": 100
+    "total_ticket": 100
 }

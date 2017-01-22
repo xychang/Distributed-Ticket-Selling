@@ -2,6 +2,8 @@
 import json
 import bisect
 import COMM
+import socket
+import time
 
 CONFIG = json.load(open('config.json'))
 
@@ -46,6 +48,9 @@ class ticket_request(object):
     def __lt__(self, other):
         return (self.clock, self.datacenter_id) < (other.score, other.datacenter_id)
 
+
+
+
 class coordinate_reply(object):
     '''
     This class stores the information needed for a reply message
@@ -55,6 +60,9 @@ class coordinate_reply(object):
         self.datacenter_id = datacenter_id
         self.target_request_clock = target_request_clock
 
+
+
+
 class coordinate_release(coordinate_reply):
     '''
     This class stores the information needed for a release message
@@ -62,6 +70,9 @@ class coordinate_release(coordinate_reply):
     def __init__(self, clock, datacenter_id, target_request_clock, ticket_change):
         super(coordinate_release, self).__init__(clock, datacenter_id, target_request_clock)
         self.ticket_change = ticket_change
+
+
+
 
 class datacenter(object):
     '''
@@ -93,24 +104,25 @@ class datacenter(object):
         COMM.send_reply(self.datacenters[message.datacenter_id],
                         (self.clock, self.datacenter_id), message)
 
-    def broadcast_message(self, message):
+    def broadcast_message(self, message, conn_list):
         ''' from this, we expect a freshly initialized ticket_request message'''
-        for center_id in self.datacenters:
-            if not center_id == self.datacenter_id:
-                if isinstance(message, ticket_request):
-                    # the count information is nenver used, but the example case send it
-                    # so I am going to send it
-                    COMM.send_request(self.datacenters[center_id],
-                                      (self.clock, self.datacenter_id), message)
-                else:
-                    # broadcast release message
-                    COMM.send_release(self.datacenters[center_id],
-                                      (self.clock, self.datacenter_id), message)
+
+        for conn in conn_list:
+            print conn
+            if isinstance(message, ticket_request):
+                print("Yes")
+                data = str(self.datacenter_id)+","+str(message.clock)+","+str(message.ticket_count)
+                conn.send(data)
+                #COMM.send_request(message, self.clock, self.datacenter_id, conn)
+            else:
+                COMM.send_release(message, self.clock, self.datacenter_id, conn)
+ 
 
 
-    def handle_ticket_request(self, message):
+
+    def handle_ticket_request(self, message, conn_list):
         '''
-        because the client is not in the logical time syste, we just send out
+        because the client is not in the logical time system, we just send out
         ticket request immediately after receiving the client message
         '''
         # update the clock upon reveing message
@@ -120,9 +132,11 @@ class datacenter(object):
         # the request is generated after all other requests in the queue
         # put it at the end
         self.request_queue.append(message)
+        print self.request_queue
         self.request_pool[message.clock] = message
+        
 
-        self.broadcast_message(message)
+        self.broadcast_message(message, conn_list)
 
     def sell_ticket(self, my_request):
         ''' now we are going to sell our ticket, and then release the hold'''
@@ -133,7 +147,15 @@ class datacenter(object):
         # if the change is zero, then the transaction failed
         self.total_ticket += change
         my_request.ticket_change = change
-        COMM.reply_client(my_request.client, change != 0)
+
+        #COMM.reply_client(my_request.client, change != 0)
+        if change == 0:
+            my_request.client.send("F,"+str(self.total_ticket))
+        else:
+            my_request.client.send("S,"+str(self.total_ticket))
+        my_request.client.close()
+
+        
         # after handling the current request, remove it from the top of the queue
         self.request_queue.remove(my_request)
         del self.request_pool[my_request.clock]
