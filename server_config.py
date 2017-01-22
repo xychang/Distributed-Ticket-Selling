@@ -57,11 +57,13 @@ class Server():
         The established connections are stored in self.rx_conn_list'''
         try:
             for center_id in self.dc.datacenters:
-                if not int(center_id) == int(self.dc.datacenter_id):
+                if not center_id == self.dc.datacenter_id:
                     socketConnect = socket(AF_INET, SOCK_STREAM)
-                    socketConnect.connect((self.ip, int(center_id)))
+                    socketConnect.connect((self.ip,
+                                           self.dc.datacenters[center_id]['port']))
                     # send initialization message, identify it's center_id
-                    socketConnect.send('INIT:{center_id}\n'.format(center_id=center_id))
+                    socketConnect.send('INIT:{center_id}\n'.format(
+                        center_id=self.dc.datacenter_id))
                     self.rx_conn_list[center_id] = socketConnect
                     logging.info("Initial connection success %s" %center_id)
         except Exception as e:
@@ -82,13 +84,22 @@ class Server():
         for conn in self.conn_list.values():
             print conn
             conn.send(message)
-        logging.info('broadcasted message: %s', message)
+        logging.info('broadcasted message: %s', message.strip())
 
     def send_message(self, target_center_id, message):
         ''' send the message to a certain datacenter, identified by target_center_id '''
         self.conn_list[target_center_id].send(message)
-        logging.info('sent message to %s: %s', target_center_id, message)
+        logging.info('sent message to %s: %s', target_center_id, message.strip())
 
+    def single_server_reply(self, center_id, conn):
+        ''' taget single peer server, loop until request complete '''
+        while True:
+            data = conn.recv(1024)
+            if data != '':
+                logging.info('received message from %s: %s', center_id, data.strip())
+
+                # call a general function for message parsing
+                self.dc.handle_request(center_id, data)
 
     def server_reply(self):
         '''
@@ -97,14 +108,12 @@ class Server():
         while True:
             # wait until all connections are established
             if (len(self.rx_conn_list) == len(self.dc.datacenters)-1):
+                logging.info('all peer connection established')
                 for center_id in self.rx_conn_list:
                     conn = self.rx_conn_list[center_id]
-                    data = conn.recv(1024)
-                    if data != '':
-                        logging.info('received message from %s: %s', center_id, data)
-
-                        # call a general function for message parsing
-                        datacenter.handle_request(center_id, data)
+                    start_new_thread(self.single_server_reply, (center_id, conn))
+                break
+            time.sleep(1)
 
 
     def waitConnection(self):
@@ -160,7 +169,7 @@ def initLog(logName):
 
 
 if __name__ == "__main__":
-    initLog('server.log')
+    initLog('server_%s.log' % sys.argv[1])
     #agrv[1] should be in the CONIG file
     server = Server(int(sys.argv[1]))
 

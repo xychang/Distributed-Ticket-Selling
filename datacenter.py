@@ -34,19 +34,19 @@ class ticket_request(object):
         ''' update the request object to reflect a received response '''
         self.collected_reply.append(sender.datacenter_id)
 
-    def is_ready(self, datacenter_id):
+    def is_ready(self):
         ''' check whether the request has all response received '''
         # if we already know it's ready, respond so
         if self.known_ready: return True
         # test whether all the response are gethered
-        is_ready = set([reply.sender.datacenter_id for reply in self.collected_reply] \
-            + [datacenter_id]).issuperset([center['id'] for center in CONFIG])
+        is_ready = set(self.collected_reply + [self.datacenter_id]).\
+            issuperset([int(center_id) for center_id in CONFIG['datacenters']])
         if is_ready: self.known_ready = True
         return is_ready
 
     # implement clock comparison for messages
     def __lt__(self, other):
-        return (self.clock, self.datacenter_id) < (other.score, other.datacenter_id)
+        return (self.clock, self.datacenter_id) < (other.clock, other.datacenter_id)
 
 
 
@@ -85,6 +85,8 @@ class datacenter(object):
         '''
         self.datacenter_id = datacenter_id
         self.datacenters = CONFIG['datacenters']
+        # update the datacenters, so that the id and port are all int
+        self.datacenters = dict([(int(x), y) for x, y in self.datacenters.items()])
         self.total_ticket = CONFIG['total_ticket']
         self.clock = 1 # the clock is to be updated on (1) receive request, (2) send request
         # keep queue of all requests
@@ -138,7 +140,7 @@ class datacenter(object):
         data = 'REPLY:{datacenter_id},{clock},{target_request_clock}\n'.format(
             datacenter_id=self.datacenter_id,
             clock=self.clock,
-            target_request_clock=message.datacenter_id
+            target_request_clock=message.clock
         )
         self.server.send_message(message.datacenter_id, data)
         # COMM.send_reply(self.datacenters[message.datacenter_id],
@@ -198,6 +200,8 @@ class datacenter(object):
                 break
 
         # check if the first request is mine, and if it's ready
+        # if I have no request, quit
+        if len(self.request_pool) == 0: return
         if self.request_queue[0].datacenter_id == self.datacenter_id and \
            self.request_queue[0].is_ready():
             self.sell_ticket(self.request_queue[0])
@@ -215,10 +219,10 @@ class datacenter(object):
         #COMM.reply_client(my_request.client, change != 0)
         if change == 0:
             my_request.client.send(
-                "Cannot sell ticket, total_ticket left {}".format(self.total_ticket))
+                "Cannot sell ticket, total_ticket left {}\n".format(self.total_ticket))
         else:
             my_request.client.send(
-                "Selling successful, total_ticket left {}".format(self.total_ticket))
+                "Selling successful, total_ticket left {}\n".format(self.total_ticket))
         my_request.client.close()
 
         # after handling the current request, remove it from the top of the queue
@@ -237,6 +241,8 @@ class datacenter(object):
         # COMM.send_release(message, self.clock, self.datacenter_id, conn)
 
         # and then check whether we need to sell another ticket
+        # if I have no request, quit
+        if len(self.request_pool) == 0: return
         if self.request_queue[0].datacenter_id == self.datacenter_id and \
            self.request_queue[0].is_ready():
             self.sell_ticket(self.request_queue[0])

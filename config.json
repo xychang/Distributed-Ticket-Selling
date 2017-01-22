@@ -1,5 +1,9 @@
 {
-    "datacenters": ["12345", "12346", "12347"],
+    "datacenters": {
+        "12345":{"port":12345}, 
+        "12346":{"port":12346}, 
+        "12347":{"port":12347}
+    },
     "messageDelay": 5,
     "total_ticket": 100
 }
