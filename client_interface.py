@@ -7,15 +7,13 @@ import socket
 import datetime
 import sys
 import time
-
+import json
 
 
 def display():
 	port_list = []
-	f = open('port_list.txt','r')
-	content = f.read().strip().split('\n')
-	for line in content:
-		port_list.append(line)
+	CONFIG = json.load(open('config.json'))
+	port_list = CONFIG['datacenters']
 	choice = display_screen(port_list)
 	return choice, port_list
 
