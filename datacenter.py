@@ -78,7 +78,7 @@ class datacenter(object):
     '''
     This class handles the protocol logic of datacenters
     '''
-    def __init__(self, datacenter_id):
+    def __init__(self, datacenter_id, server):
         '''
         we use datacenter_id instead of pid because it is potentially
         deployed on multiple servers, and many have the same pid
@@ -91,6 +91,40 @@ class datacenter(object):
         self.request_queue = []
         # keep a pool of my requests, so as to esially update the response status
         self.request_pool = {}
+        # store the server object to be used for making requests
+        self.server = server
+
+    def handle_request(self, target_center_id, data):
+        ''' This function is a general function for handling received message
+        target_center_id: the id of the datacenter sending the message
+        data: the message content '''
+        # Problem data can only be string
+        # if data type == ticket request
+        # self.dc.handle_coordinate_request()
+        # if data type == reply
+        # self.dc.handle_coordinate_reply()
+        # if data.type == release
+        # self.dc.handle_coordinate_release()
+
+        message_type, content = data.split(':')
+        # data = 'REQUEST:{datacenter_id},{clock},{ticket_count}\n'.format(
+        if message_type == 'REQUEST':
+            datacenter_id, clock, ticket_count = content.split(',')
+            message = ticket_request(None, int(ticket_count))
+            message.set_clock(int(clock))
+            message.set_datacenter_id(int(datacenter_id))
+            self.handle_coordinate_request(message)
+        # data = 'REPLY:{datacenter_id},{clock},{target_request_clock}\n'.format(
+        elif message_type == 'REPLY':
+            datacenter_id, clock, target_request_clock = content.split(',')
+            message = coordinate_reply(int(clock), int(datacenter_id), int(target_request_clock))
+            self.handle_coordinate_reply(message)
+        # data = 'RELEASE:{datacenter_id},{clock},{request_clock},{ticket_change}\n'.format(
+        elif message_type == 'RELEASE':
+            datacenter_id, clock, request_clock, ticket_change = content.split(',')
+            message = coordinate_release(int(clock), int(datacenter_id),
+                                         int(request_clock), int(ticket_change))
+            self.handle_coordinate_release(message)
 
 
     def handle_coordinate_request(self, message):
@@ -101,27 +135,18 @@ class datacenter(object):
         bisect.insort(self.request_queue, message)
         # and then reply the message, containing my clock, my datacenter_id
         # and the message I am replying to (identified by message clock)
-        COMM.send_reply(self.datacenters[message.datacenter_id],
-                        (self.clock, self.datacenter_id), message)
-
-    def broadcast_message(self, message, conn_list):
-        ''' from this, we expect a freshly initialized ticket_request message'''
-
-        for conn in conn_list:
-            print conn
-            if isinstance(message, ticket_request):
-                print("Yes")
-                data = str(self.datacenter_id)+","+str(message.clock)+","+str(message.ticket_count)
-                conn.send(data)
-                #COMM.send_request(message, self.clock, self.datacenter_id, conn)
-            else:
-                COMM.send_release(message, self.clock, self.datacenter_id, conn)
- 
+        data = 'REPLY:{datacenter_id},{clock},{target_request_clock}\n'.format(
+            datacenter_id=self.datacenter_id,
+            clock=self.clock,
+            target_request_clock=message.datacenter_id
+        )
+        self.server.send_message(message.datacenter_id, data)
+        # COMM.send_reply(self.datacenters[message.datacenter_id],
+        #                 (self.clock, self.datacenter_id), message)
 
 
-
-    def handle_ticket_request(self, message, conn_list):
-        '''
+    def handle_ticket_request(self, message):
+        '''from this, we expect a ticket_request message
         because the client is not in the logical time system, we just send out
         ticket request immediately after receiving the client message
         '''
@@ -134,38 +159,16 @@ class datacenter(object):
         self.request_queue.append(message)
         print self.request_queue
         self.request_pool[message.clock] = message
-        
 
-        self.broadcast_message(message, conn_list)
+        # format the request message into string and then broadcast it
+        # data = str(self.datacenter_id)+","+str(message.clock)+","+str(message.ticket_count)
+        data = 'REQUEST:{datacenter_id},{clock},{ticket_count}\n'.format(
+            datacenter_id=self.datacenter_id,
+            clock=self.clock,
+            ticket_count=message.ticket_count)
 
-    def sell_ticket(self, my_request):
-        ''' now we are going to sell our ticket, and then release the hold'''
-        if my_request.ticket_count <= self.total_ticket:
-            change = - my_request.ticket_count
-        else:
-            change = 0
-        # if the change is zero, then the transaction failed
-        self.total_ticket += change
-        my_request.ticket_change = change
-
-        #COMM.reply_client(my_request.client, change != 0)
-        if change == 0:
-            my_request.client.send("F,"+str(self.total_ticket))
-        else:
-            my_request.client.send("S,"+str(self.total_ticket))
-        my_request.client.close()
-
-        
-        # after handling the current request, remove it from the top of the queue
-        self.request_queue.remove(my_request)
-        del self.request_pool[my_request.clock]
-        # send the release message to all peers
-        self.broadcast_message(my_request)
-        # and then check whether we need to sell another ticket
-        if self.request_queue[0].datacenter_id == self.datacenter_id and \
-           self.request_queue[0].is_ready():
-            self.sell_ticket(self.request_queue[0])
-
+        self.server.broadcast_message(data)
+        #COMM.send_request(message, self.clock, self.datacenter_id, conn)
 
     def handle_coordinate_reply(self, message):
         '''from this, we expect a coordinate_reply message '''
@@ -195,6 +198,45 @@ class datacenter(object):
                 break
 
         # check if the first request is mine, and if it's ready
+        if self.request_queue[0].datacenter_id == self.datacenter_id and \
+           self.request_queue[0].is_ready():
+            self.sell_ticket(self.request_queue[0])
+
+    def sell_ticket(self, my_request):
+        ''' now we are going to sell our ticket, and then release the hold'''
+        if my_request.ticket_count <= self.total_ticket:
+            change = - my_request.ticket_count
+        else:
+            change = 0
+        # if the change is zero, then the transaction failed
+        self.total_ticket += change
+        my_request.ticket_change = change
+
+        #COMM.reply_client(my_request.client, change != 0)
+        if change == 0:
+            my_request.client.send(
+                "Cannot sell ticket, total_ticket left {}".format(self.total_ticket))
+        else:
+            my_request.client.send(
+                "Selling successful, total_ticket left {}".format(self.total_ticket))
+        my_request.client.close()
+
+        # after handling the current request, remove it from the top of the queue
+        self.request_queue.remove(my_request)
+        del self.request_pool[my_request.clock]
+
+        # send the release message to all peers
+        # format a release message
+        # request clock here is used to identify the request being released
+        data = 'RELEASE:{datacenter_id},{clock},{request_clock},{ticket_change}\n'.format(
+            datacenter_id=self.datacenter_id,
+            clock=self.clock,
+            request_clock=my_request.clock,
+            ticket_change=my_request.ticket_change)
+        self.server.broadcast_message(data)
+        # COMM.send_release(message, self.clock, self.datacenter_id, conn)
+
+        # and then check whether we need to sell another ticket
         if self.request_queue[0].datacenter_id == self.datacenter_id and \
            self.request_queue[0].is_ready():
             self.sell_ticket(self.request_queue[0])
