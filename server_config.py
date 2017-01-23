@@ -28,6 +28,7 @@ class Server():
         self.port = port
         self.threads = []
         self.delay = delay
+
         logging.info('Server running at {0:s}:{1:4d}'.format(self.ip, self.port))
         try:
             self.server = socket(AF_INET, SOCK_STREAM)
@@ -88,11 +89,11 @@ class Server():
 
     def broadcast_message(self, message):
         ''' broadcast the message to all datacenters '''
+        time.sleep(self.delay)
         for conn in self.conn_list.values():
             print conn
-            time.sleep(self.delay)
             conn.send(message)
-        
+
         logging.info('broadcasted message: %s', message.strip())
 
     def send_message(self, target_center_id, message):
@@ -123,7 +124,7 @@ class Server():
                     conn = self.rx_conn_list[center_id]
                     start_new_thread(self.single_server_reply, (center_id, conn))
                 break
-            time.sleep(1)
+            # time.sleep(1)
 
 
     def waitConnection(self):

@@ -1,9 +1,10 @@
 # this script handles the logic of datacenter
 import json
 import bisect
-import COMM
-import socket
-import time
+# import COMM
+# import socket
+# import time
+from threading import Lock
 
 CONFIG = json.load(open('config.json'))
 
@@ -95,6 +96,9 @@ class datacenter(object):
         self.request_pool = {}
         # store the server object to be used for making requests
         self.server = server
+        # a lock to resure that the clock is not updated simultanously
+        self.clock_lock = Lock()
+
 
     def handle_request(self, target_center_id, data):
         ''' This function is a general function for handling received message
@@ -132,14 +136,15 @@ class datacenter(object):
     def handle_coordinate_request(self, message):
         ''' from this, we expect a ticket_request message, with the datacenter_id and clock set'''
         # update the clock upon revcieing message
-        self.clock = max(self.clock, message.clock) + 1
+        with self.clock_lock:
+            clock = self.clock = max(self.clock, message.clock) + 1
         # put the message into queue
         bisect.insort(self.request_queue, message)
         # and then reply the message, containing my clock, my datacenter_id
         # and the message I am replying to (identified by message clock)
         data = 'REPLY:{datacenter_id},{clock},{target_request_clock}\n'.format(
             datacenter_id=self.datacenter_id,
-            clock=self.clock,
+            clock=clock,
             target_request_clock=message.clock
         )
         self.server.send_message(message.datacenter_id, data)
@@ -153,8 +158,9 @@ class datacenter(object):
         ticket request immediately after receiving the client message
         '''
         # update the clock upon reveing message
-        self.clock = self.clock + 1
-        message.set_clock(self.clock)
+        with self.clock_lock:
+            self.clock = self.clock + 1
+            message.set_clock(self.clock)
         message.set_datacenter_id(self.datacenter_id)
         # the request is generated after all other requests in the queue
         # put it at the end
@@ -175,7 +181,8 @@ class datacenter(object):
     def handle_coordinate_reply(self, message):
         '''from this, we expect a coordinate_reply message '''
         # update the clock upon revcieing message
-        self.clock = max(self.clock, message.clock) + 1
+        with self.clock_lock:
+            clock = self.clock = max(self.clock, message.clock) + 1
         # update the stored request
         my_request = self.request_pool[message.target_request_clock]
         my_request.record_response(message)
@@ -187,7 +194,8 @@ class datacenter(object):
     def handle_coordinate_release(self, message):
         '''from this, we expect a coordinate_release message '''
         # update the clock upon revcieing message
-        self.clock = max(self.clock, message.clock) + 1
+        with self.clock_lock:
+            self.clock = max(self.clock, message.clock) + 1
         # update the total number of tickets
         self.total_ticket += message.ticket_change
         # update the queue to remove the request from queue
@@ -232,9 +240,14 @@ class datacenter(object):
         # send the release message to all peers
         # format a release message
         # request clock here is used to identify the request being released
+        # before we sell the ticket, we need to make sure that our local clock
+        # is updated because of this operation
+        with self.clock_lock:
+            clock = self.clock = self.clock + 1
+
         data = 'RELEASE:{datacenter_id},{clock},{request_clock},{ticket_change}\n'.format(
             datacenter_id=self.datacenter_id,
-            clock=self.clock,
+            clock=clock,
             request_clock=my_request.clock,
             ticket_change=my_request.ticket_change)
         self.server.broadcast_message(data)
