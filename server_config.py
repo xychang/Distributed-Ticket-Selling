@@ -1,3 +1,9 @@
+'''
+    Interface of the Ticket Selling System
+    Implemented by Zhijing@Jan 21, 2017
+    Modified by Xinyi@Jan 22, 2017
+'''
+
 import shutil
 import os, sys
 from socket import *
@@ -17,10 +23,11 @@ CONFIG = json.load(open('config.json'))
 
 
 class Server():
-    def __init__(self, port):
+    def __init__(self, port, delay):
         self.ip = gethostbyname(gethostname())
         self.port = port
         self.threads = []
+        self.delay = delay
         logging.info('Server running at {0:s}:{1:4d}'.format(self.ip, self.port))
         try:
             self.server = socket(AF_INET, SOCK_STREAM)
@@ -30,10 +37,10 @@ class Server():
         except Exception as e:
             logging.warning("Socket create fail.{0}".format(e)) #socket create fail
 
-        # using port as datacenter id is a bad idea, change it if we have time
+        # using port as datacenter id is a bad idea, change it if we have time: #No Time!#
         self.dc = datacenter(port, self)
 
-        # store incomming connection from other datacenters, this is used to send messages
+        # store incomming connection from other datacenters, this is used for sending messages
         self.conn_list = {}
         # store outgoing connecion to other datacenters, this is used for receiving messages
         self.rx_conn_list = {}
@@ -83,11 +90,14 @@ class Server():
         ''' broadcast the message to all datacenters '''
         for conn in self.conn_list.values():
             print conn
+            time.sleep(self.delay)
             conn.send(message)
+        
         logging.info('broadcasted message: %s', message.strip())
 
     def send_message(self, target_center_id, message):
         ''' send the message to a certain datacenter, identified by target_center_id '''
+        time.sleep(self.delay)
         self.conn_list[target_center_id].send(message)
         logging.info('sent message to %s: %s', target_center_id, message.strip())
 
@@ -144,7 +154,7 @@ class Server():
                     tk_request = ticket_request(conn, int(msg))
                     self.dc.handle_ticket_request(tk_request)
                     logging.info('Ask for {ticket_count} tickets!'.format(ticket_count=msg))
-                    conn.send("Thank you for connecting")
+                    #conn.send("Thank you for connecting")
                     # time.sleep(5)
                     # should not close the connection, because the reply message is not sent yet
                     # conn.close()
@@ -171,6 +181,7 @@ def initLog(logName):
 if __name__ == "__main__":
     initLog('server_%s.log' % sys.argv[1])
     #agrv[1] should be in the CONIG file
-    server = Server(int(sys.argv[1]))
+    delay = int(CONFIG['messageDelay'])
+    server = Server(int(sys.argv[1]), delay)
 
 
