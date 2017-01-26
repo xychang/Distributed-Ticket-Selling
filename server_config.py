@@ -24,7 +24,7 @@ CONFIG = json.load(open('config.json'))
 
 class Server():
     def __init__(self, port, delay):
-        self.ip = gethostbyname(gethostname())
+        self.ip = gethostbyname('')
         self.port = port
         self.threads = []
         self.delay = delay
@@ -87,30 +87,35 @@ class Server():
         num = len(self.dc.datacenters) - int(self.port%len(self.dc.datacenters))
         Timer(num*10, self.server_connect, ()).start()
 
-    def broadcast_message(self, message):
+    def broadcast_message(self, slock, message):
         ''' broadcast the message to all datacenters '''
         time.sleep(self.delay)
         for conn in self.conn_list.values():
-            print conn
+            # print conn
             conn.send(message)
 
-        logging.info('broadcasted message: %s', message.strip())
+        logging.info('<-[%d]\tBroadcasted message: %s',
+                     clock, message.strip())
 
-    def send_message(self, target_center_id, message):
-        ''' send the message to a certain datacenter, identified by target_center_id '''
+    def send_message(self, target_center_id, clock, message):
+        ''' send the message to a certain datacenter, 
+        identified by target_center_id '''
         time.sleep(self.delay)
         self.conn_list[target_center_id].send(message)
-        logging.info('sent message to %s: %s', target_center_id, message.strip())
+        logging.info('<-[%d]\tSent message to %s: %s',
+                     clock, target_center_id, message.strip())
 
     def single_server_reply(self, center_id, conn):
         ''' taget single peer server, loop until request complete '''
         while True:
-            data = conn.recv(1024)
-            if data != '':
-                logging.info('received message from %s: %s', center_id, data.strip())
+            full_data = conn.recv(1024)
+            for data in full_data.split('\n'):
+                if data != '':
+                    logging.info('->[%d]\tReceived message from %s: %s',
+                                 self.dc.clock, center_id, data.strip())
 
-                # call a general function for message parsing
-                self.dc.handle_request(center_id, data)
+                    # call a general function for message parsing
+                    self.dc.handle_request(center_id, data)
 
     def server_reply(self):
         '''
@@ -119,7 +124,7 @@ class Server():
         while True:
             # wait until all connections are established
             if (len(self.rx_conn_list) == len(self.dc.datacenters)-1):
-                logging.info('all peer connection established')
+                logging.info('All peer connection established')
                 for center_id in self.rx_conn_list:
                     conn = self.rx_conn_list[center_id]
                     start_new_thread(self.single_server_reply, (center_id, conn))
@@ -154,14 +159,14 @@ class Server():
                     # parse the message 
                     tk_request = ticket_request(conn, int(msg))
                     self.dc.handle_ticket_request(tk_request)
-                    logging.info('Ask for {ticket_count} tickets!'.format(ticket_count=msg))
+                    logging.info('Client ask for {ticket_count} tickets!'.format(ticket_count=msg))
                     #conn.send("Thank you for connecting")
                     # time.sleep(5)
                     # should not close the connection, because the reply message is not sent yet
                     # conn.close()
 
             except Exception as e:
-                logging.error('error with incomming connection. {0}'.format(e))
+                logging.error('Error with incomming connection. {0}'.format(e))
 
 
 # initialize the log

@@ -5,6 +5,7 @@ import bisect
 # import socket
 # import time
 from threading import Lock
+from functools import total_ordering
 
 CONFIG = json.load(open('config.json'))
 
@@ -148,7 +149,7 @@ class datacenter(object):
             clock=clock,
             target_request_clock=message.clock
         )
-        self.server.send_message(message.datacenter_id, data)
+        self.server.send_message(message.datacenter_id, clock, data)
         # COMM.send_reply(self.datacenters[message.datacenter_id],
         #                 (self.clock, self.datacenter_id), message)
 
@@ -160,23 +161,23 @@ class datacenter(object):
         '''
         # update the clock upon reveing message
         with self.clock_lock:
-            self.clock = self.clock + 1
+            clock = self.clock = self.clock + 1
             message.set_clock(self.clock)
         message.set_datacenter_id(self.datacenter_id)
         # the request is generated after all other requests in the queue
         # put it at the end
         self.request_queue.append(message)
-        print self.request_queue
+        # print self.request_queue
         self.request_pool[message.clock] = message
 
         # format the request message into string and then broadcast it
         # data = str(self.datacenter_id)+","+str(message.clock)+","+str(message.ticket_count)
         data = 'REQUEST:{datacenter_id},{clock},{ticket_count}\n'.format(
             datacenter_id=self.datacenter_id,
-            clock=self.clock,
+            clock=clock,
             ticket_count=message.ticket_count)
 
-        self.server.broadcast_message(data)
+        self.server.broadcast_message(data, clock)
         #COMM.send_request(message, self.clock, self.datacenter_id, conn)
 
     def handle_coordinate_reply(self, message):
@@ -251,7 +252,7 @@ class datacenter(object):
             clock=clock,
             request_clock=my_request.clock,
             ticket_change=my_request.ticket_change)
-        self.server.broadcast_message(data)
+        self.server.broadcast_message(data, clock)
         # COMM.send_release(message, self.clock, self.datacenter_id, conn)
 
         # and then check whether we need to sell another ticket

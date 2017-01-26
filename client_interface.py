@@ -34,8 +34,8 @@ def display_screen(port_list):
 
 def client_server(port, ticket_num):
     c = socket.socket()
-    host = socket.gethostname()
-    c.connect((host, int(port)))
+    # host = socket.gethostname()
+    c.connect(('', int(port)))
     c.sendall(ticket_num)
     time.sleep(2)
     print c.recv(1024)
