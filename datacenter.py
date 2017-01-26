@@ -8,6 +8,7 @@ from threading import Lock
 
 CONFIG = json.load(open('config.json'))
 
+@total_ordering
 class ticket_request(object):
     '''
     the ticket request is the request from the client, and
