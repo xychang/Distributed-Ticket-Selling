@@ -87,7 +87,7 @@ class Server():
         num = len(self.dc.datacenters) - int(self.port%len(self.dc.datacenters))
         Timer(num*10, self.server_connect, ()).start()
 
-    def broadcast_message(self, slock, message):
+    def broadcast_message(self, clock, message):
         ''' broadcast the message to all datacenters '''
         time.sleep(self.delay)
         for conn in self.conn_list.values():

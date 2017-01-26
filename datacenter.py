@@ -177,7 +177,7 @@ class datacenter(object):
             clock=clock,
             ticket_count=message.ticket_count)
 
-        self.server.broadcast_message(data, clock)
+        self.server.broadcast_message(clock, data)
         #COMM.send_request(message, self.clock, self.datacenter_id, conn)
 
     def handle_coordinate_reply(self, message):
@@ -252,7 +252,7 @@ class datacenter(object):
             clock=clock,
             request_clock=my_request.clock,
             ticket_change=my_request.ticket_change)
-        self.server.broadcast_message(data, clock)
+        self.server.broadcast_message(clock, data)
         # COMM.send_release(message, self.clock, self.datacenter_id, conn)
 
         # and then check whether we need to sell another ticket
